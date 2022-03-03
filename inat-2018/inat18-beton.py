@@ -79,7 +79,7 @@ def main():
         writer = DatasetWriter(
                 write_path + ("/inat18_train.beton" if name == "train" else "/inat18_val.beton"),
                 {
-                    'image': RGBImageField(max_resolution = 256, jpeg_quality = jpeg_quality),
+                    'image': RGBImageField(max_resolution = 256),
                     'label': IntField()
                 }
             )
