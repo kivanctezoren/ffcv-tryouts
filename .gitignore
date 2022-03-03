@@ -1,0 +1,4 @@
+*.beton
+*.out
+*.err
+dsets/
