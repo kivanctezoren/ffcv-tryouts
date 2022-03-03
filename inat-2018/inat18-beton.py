@@ -84,7 +84,7 @@ def main():
                 }
             )
     
-    writer.from_indexed_dataset(dataset)
+    writer.from_indexed_dataset(datasets)
 
 
 if __name__ == "__main__":
