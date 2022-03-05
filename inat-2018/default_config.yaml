@@ -1,13 +1,11 @@
 data:
   gpu: 0
   num_workers: 8
-  train_dataset: /home/ktezoren/ffcv/beton-dsets/cifar_train.beton
-  val_dataset: /home/ktezoren/ffcv/beton-dsets/cifar_test.beton
-model:
-  arch: resnet50
+  train_dataset: /home/ktezoren/ffcv/beton-dsets/inat18_train.beton
+  val_dataset: /home/ktezoren/ffcv/beton-dsets/inat18_val.beton
 training:
   batch_size: 128
-  epochs: 200
+  epochs: 100
   lr: 0.5
   momentum: 0.9
   lr_peak_epoch: 5
