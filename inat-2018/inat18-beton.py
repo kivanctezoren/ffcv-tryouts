@@ -68,7 +68,7 @@ class INaturalist(Dataset):
 
 
 def main():
-    inat18_root = "/home/ktezoren/bot-lt/dsets/inat18"
+    inat18_root = "/home/ktezoren/bot-lt/dsets/inat18/images"
     write_path = '/home/ktezoren/ffcv/beton-dsets'
     
     datasets = {
