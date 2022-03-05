@@ -72,8 +72,8 @@ def main():
     write_path = '/home/ktezoren/ffcv/beton-dsets'
     
     datasets = {
-            "train": INaturalist(root=inat18_root, annotation=inat18_root + "/train2018.json"),
-            "val": INaturalist(root=inat18_root, annotation=inat18_root + "/val2018.json")
+            "train": INaturalist(root=inat18_root, annotation="/home/ktezoren/bot-lt/dsets/inat18/train2018.json"),
+            "val": INaturalist(root=inat18_root, annotation="/home/ktezoren/bot-lt/dsets/inat18/val2018.json")
             }
 
 
