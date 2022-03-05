@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from fastargs import get_current_config
 from ffcv.fields import RGBImageField, IntField
 from ffcv.writer import DatasetWriter
+from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from typing import Callable, Optional
