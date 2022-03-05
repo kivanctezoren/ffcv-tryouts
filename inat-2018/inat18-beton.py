@@ -49,8 +49,9 @@ class INaturalist(Dataset):
 
         if self.transform is not None:
             img = self.transform(img)
-        else:
-            img = self.to_tensor(img)
+        # TODO: Transform to tensor or not?
+        #else:
+        #    img = self.to_tensor(img)
 
         if self.target_transform is not None:
             target = self.target_transform(target)
@@ -73,8 +74,8 @@ def main():
             "train": INaturalist(root=inat18_root, annotation=inat18_root + "/train2018.json"),
             "val": INaturalist(root=inat18_root, annotation=inat18_root + "/val2018.json")
             }
-    
-    
+
+
     for (name, ds) in datasets.items():
         writer = DatasetWriter(
                 write_path + ("/inat18_train.beton" if name == "train" else "/inat18_val.beton"),
@@ -83,8 +84,8 @@ def main():
                     'label': IntField()
                 }
             )
-    
-    writer.from_indexed_dataset(datasets)
+        
+        writer.from_indexed_dataset(ds)
 
 
 if __name__ == "__main__":
