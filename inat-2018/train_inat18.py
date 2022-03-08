@@ -26,15 +26,12 @@ from ffcv.transforms.common import Squeeze
 from ffcv.writer import DatasetWriter
 
 
-# TODO: Check the params, may need different ones for iNat training
-
 Section('training', 'Hyperparameters').params(
     lr=Param(float, 'The learning rate to use', required=True),
     epochs=Param(int, 'Number of epochs to run for', required=True),
     batch_size=Param(int, 'Batch size', default=512),
     momentum=Param(float, 'Momentum for SGD', default=0.9),
     weight_decay=Param(float, 'l2 weight decay', default=5e-4),
-    label_smoothing=Param(float, 'Value of label smoothing', default=0.1),
     num_workers=Param(int, 'The number of workers', default=8),
     lr_tta=Param(bool, 'Test time augmentation by averaging with horizontally flipped version', default=True)
 )
@@ -116,7 +113,7 @@ def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, group
 def construct_model():
     num_class = 8142
 
-    # TOOD: Construct ResNet50
+    # TODO: Construct ResNet50
     model = ch.nn.Sequential(
         conv_bn(3, 64, kernel_size=3, stride=1, padding=1),
         conv_bn(64, 128, kernel_size=5, stride=2, padding=2),
@@ -139,7 +136,6 @@ def construct_model():
 @param('training.weight_decay')
 def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
           momentum=None, weight_decay=None, lr_peak_epoch=None):
-    # TODO: Replace with BoT iNat LR schedule & optimizer
     opt = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     iters_per_epoch = len(loaders['train'])
     scheduler = lr_scheduler.MultiStepLR(opt, [60, 80], 0.1)
