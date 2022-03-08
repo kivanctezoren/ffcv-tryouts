@@ -31,7 +31,6 @@ from ffcv.writer import DatasetWriter
 Section('training', 'Hyperparameters').params(
     lr=Param(float, 'The learning rate to use', required=True),
     epochs=Param(int, 'Number of epochs to run for', required=True),
-    lr_peak_epoch=Param(int, 'Peak epoch for cyclic lr', required=True),
     batch_size=Param(int, 'Batch size', default=512),
     momentum=Param(float, 'Momentum for SGD', default=0.9),
     weight_decay=Param(float, 'l2 weight decay', default=5e-4),
@@ -57,13 +56,6 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
     }
 
     start_time = time.time()
-    #CIFAR_MEAN = [125.307, 122.961, 113.8575]
-    #CIFAR_STD = [51.5865, 50.847, 51.255]
-    # FIXME: Values seem to be scaled differently. Compare with CIFAR mean & std from different source:
-    # CIFAR10 mean: (0.4914, 0.4822, 0.4465)
-    # CIFAR10 mean: (0.2023, 0.1994, 0.2010)
-    INAT18_MEAN = [0.485, 0456, 0.406]
-    INAT18_STD = [0.229, 0.224, 0.225]
     loaders = {}
 
     for name in ['train', 'test']:
@@ -80,12 +72,12 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
         #       Cutout(4, tuple(map(int, CIFAR_MEAN))),
         #    ])
 
+        # (Leave out normalization with mean & std. to match BoT config.)
         image_pipeline.extend([
             ToTensor(),
             ToDevice('cuda:0', non_blocking=True),
             ToTorchImage(),
-            Convert(ch.float16),
-            torchvision.transforms.Normalize(INAT18_MEAN, INAT18_STD),
+            Convert(ch.float16)  # TODO: float16 or 32?
         ])
         
         # Shuffle if train, do not if validation
@@ -145,20 +137,14 @@ def construct_model():
 @param('training.epochs')
 @param('training.momentum')
 @param('training.weight_decay')
-@param('training.label_smoothing')
-@param('training.lr_peak_epoch')
 def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
           momentum=None, weight_decay=None, lr_peak_epoch=None):
     # TODO: Replace with BoT iNat LR schedule & optimizer
     opt = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     iters_per_epoch = len(loaders['train'])
-    # Cyclic LR with single triangle
-    lr_schedule = np.interp(np.arange((epochs+1) * iters_per_epoch),
-                            [0, lr_peak_epoch * iters_per_epoch, epochs * iters_per_epoch],
-                            [0, 1, 0])
-    scheduler = lr_scheduler.LambdaLR(opt, lr_schedule.__getitem__)
+    scheduler = lr_scheduler.MultiStepLR(opt, [60, 80], 0.1)
     scaler = GradScaler()
-    loss_fn = CrossEntropyLoss(label_smoothing=label_smoothing)
+    loss_fn = CrossEntropyLoss()
 
     for _ in range(epochs):
         for ims, labs in tqdm(loaders['train']):
