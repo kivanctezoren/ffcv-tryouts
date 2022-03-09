@@ -110,10 +110,152 @@ def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, group
             ch.nn.ReLU(inplace=True)
     )
 
+
+class ResNet(nn.Module):
+    def __init__(self, block_type, num_blocks, last_layer_stride=2):
+        super(ResNet, self).__init__()
+        self.inplanes = 64
+        self.block = block_type
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(True)
+        self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        self.layer1 = self._make_layer(num_blocks[0], 64)
+        self.layer2 = self._make_layer(
+            num_blocks[1], 128, stride=2
+        )
+        self.layer3 = self._make_layer(
+            num_blocks[2], 256, stride=2
+        )
+        self.layer4 = self._make_layer(
+            num_blocks[3],
+            512,
+            stride=last_layer_stride,
+        )
+    def _make_layer(self, num_block, planes, stride=1):
+        strides = [stride] + [1] * (num_block - 1)
+        layers = []
+        for now_stride in strides:
+            layers.append(
+                self.block(
+                    self.inplanes, planes, stride=now_stride
+                )
+            )
+            self.inplanes = planes * self.block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x, **kwargs):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.pool(out)
+
+        out = self.layer1(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer1':
+            out = kwargs['coef']*out + (1-kwargs['coef'])*out[kwargs['index']]
+        out = self.layer2(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer2':
+            out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
+        out = self.layer3(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer3':
+            out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
+        out = self.layer4(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer4':
+            out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
+        return out
+
+
+def rn_50(last_layer_stride=2):
+    return ResNet(BottleNeck, [3, 4, 6, 3], last_layer_stride)
+
+
+class GAP(nn.Module):
+    """Global Average pooling
+        Widely used in ResNet, Inception, DenseNet, etc.
+     """
+
+    def __init__(self):
+        super(GAP, self).__init__()
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+    def forward(self, x):
+        x = self.avgpool(x)
+        #         x = x.view(x.shape[0], -1)
+        return x
+
+
+class Network(nn.Module):
+    def __init__(self, mode="train", num_classes=8142):
+        super(Network, self).__init__()
+        self.num_classes = num_classes
+        self.backbone = rn_50(last_layer_stride=2)
+
+        self.mode = mode
+        self.module = GAP()
+        self.classifier = nn.Linear(2048, self.num_classes, bias=True)
+
+    def forward(self, x, **kwargs):
+        if "feature_flag" in kwargs or "feature_cb" in kwargs or "feature_rb" in kwargs:
+            return self.extract_feature(x, **kwargs)
+        elif "classifier_flag" in kwargs:
+            return self.classifier(x)
+        elif 'feature_maps_flag' in kwargs:
+            return self.extract_feature_maps(x)
+        elif 'layer' in kwargs and 'index' in kwargs:
+            if kwargs['layer'] in ['layer1', 'layer2', 'layer3']:
+                x = self.backbone.forward(x, index=kwargs['index'], layer=kwargs['layer'], coef=kwargs['coef'])
+            else:
+                x = self.backbone(x)
+            x = self.module(x)
+            if kwargs['layer'] == 'pool':
+                x = kwargs['coef']*x+(1-kwargs['coef'])*x[kwargs['index']]
+            x = x.view(x.shape[0], -1)
+            x = self.classifier(x)
+            if kwargs['layer'] == 'fc':
+                x = kwargs['coef']*x + (1-kwargs['coef'])*x[kwargs['index']]
+            return x
+
+        x = self.backbone(x)
+        x = self.module(x)
+        x = x.view(x.shape[0], -1)
+        x = self.classifier(x)
+        return x
+
+    def get_backbone_layer_info(self):
+        layers = 4
+        blocks_info = [3, 4, 6, 3]
+        return layers, blocks_info
+
+        def extract_feature(self, x, **kwargs):
+        x = self.backbone(x)
+        x = self.module(x)
+        x = x.view(x.shape[0], -1)
+        return x
+
+    def extract_feature_maps(self, x):
+        x = self.backbone(x)
+        return x
+
+    def freeze_backbone(self):
+        print("Freezing backbone .......")
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+    def get_feature_length(self):
+        return 2048
+
+    def _get_module(self):
+        return GAP()
+
+
 def construct_model():
     num_class = 8142
 
     # TODO: Construct ResNet50
+    model = Network("train", num_classes)
+
+    """
     model = ch.nn.Sequential(
         conv_bn(3, 64, kernel_size=3, stride=1, padding=1),
         conv_bn(64, 128, kernel_size=5, stride=2, padding=2),
@@ -127,8 +269,11 @@ def construct_model():
         ch.nn.Linear(128, num_class, bias=False),
         Mul(0.2)
     )
+    """
+
     model = model.to(memory_format=ch.channels_last).cuda()
     return model
+
 
 @param('training.lr')
 @param('training.epochs')
