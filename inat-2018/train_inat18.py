@@ -167,6 +167,55 @@ class ResNet(ch.nn.Module):
         return out
 
 
+class BottleNeck(ch.nn.Module):
+
+    expansion = 4
+
+    def __init__(self, inplanes, planes, stride=1):
+        super(BottleNeck, self).__init__()
+        self.conv1 = ch.nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        self.bn1 = ch.nn.BatchNorm2d(planes)
+        self.relu1 = ch.nn.ReLU(True)
+        self.conv2 = ch.nn.Conv2d(
+            planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
+        self.bn2 = ch.nn.BatchNorm2d(planes)
+        self.relu2 = ch.nn.ReLU(True)
+        self.conv3 = ch.nn.Conv2d(
+            planes, planes * self.expansion, kernel_size=1, bias=False
+        )
+        self.bn3 = ch.nn.BatchNorm2d(planes * self.expansion)
+        if stride != 1 or self.expansion * planes != inplanes:
+            self.downsample = ch.nn.Sequential(
+                ch.nn.Conv2d(
+                    inplanes,
+                    self.expansion * planes,
+                    kernel_size=1,
+                    stride=stride,
+                    bias=False,
+                ),
+                ch.nn.BatchNorm2d(self.expansion * planes),
+            )
+        else:
+            self.downsample = None
+        self.relu = ch.nn.ReLU(True)
+
+    def forward(self, x):
+        out = self.relu1(self.bn1(self.conv1(x)))
+
+        out = self.relu2(self.bn2(self.conv2(out)))
+
+        out = self.bn3(self.conv3(out))
+
+        if self.downsample != None:
+            residual = self.downsample(x)
+        else:
+            residual = x
+        out = out + residual
+        out = self.relu(out)
+        return out
+
+
 def rn_50(last_layer_stride=2):
     return ResNet(BottleNeck, [3, 4, 6, 3], last_layer_stride)
 
