@@ -10,7 +10,7 @@
 #export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-10.0/lib64
 
 source activate ffcv
-python3 train_inat18.py --config-file default_config.yaml 
+python3 train_inat18.py --config-file one_gpu_config.yaml 
 
 echo "--- FFCV Job (ffcv-train-inat18-test) Done ---"
 
