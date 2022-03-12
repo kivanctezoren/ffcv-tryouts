@@ -17,7 +17,7 @@ from fastargs.decorators import param
 from fastargs.validation import And, OneOf
 
 from ffcv.fields import IntField, RGBImageField
-from ffcv.fields.decoders import IntDecoder, SimpleRGBImageDecoder
+from ffcv.fields.decoders import IntDecoder, RandomResizedCropRGBImageDecoder, CenterCropRGBImageDecoder
 from ffcv.loader import Loader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import RandomHorizontalFlip, Cutout, \
@@ -56,18 +56,19 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
     loaders = {}
 
     for name in ['train', 'test']:
-        # TODO: Need device ID?
-        #label_pipeline: List[Operation] = [IntDecoder(), ToTensor(), ToDevice('cuda:0'), Squeeze()]
-        label_pipeline: List[Operation] = [IntDecoder(), ToTensor(), ToDevice(), Squeeze()]
-        image_pipeline: List[Operation] = [SimpleRGBImageDecoder()]
+        label_pipeline: List[Operation] = [IntDecoder(), ToTensor(), ToDevice('cuda:0'), Squeeze()]
 
-        # Leave out transformations
-        #if name == 'train':
-        #    image_pipeline.extend([
-        #        RandomHorizontalFlip(),
-        #        RandomTranslate(padding=2, fill=tuple(map(int, CIFAR_MEAN))),
-        #       Cutout(4, tuple(map(int, CIFAR_MEAN))),
-        #    ])
+        if name == 'train':
+            image_pipeline: List[Operation] = [
+                RandomResizedCropRGBImageDecoder(output_size=224),  # Default resizing arguments apply
+                RandomHorizontalFlip()
+            ]
+        else:  # test
+            image_pipeline: List[Operation] = [
+                # FIXME: Doesn't fully replicate BoT config.: Also need to resize with BoT transformation
+                #   "shorter_resize_for_crop"
+                CenterCropRGBImageDecoder(output_size=224)
+            ]
 
         # (Leave out normalization with mean & std. to match BoT config.)
         image_pipeline.extend([
@@ -111,15 +112,15 @@ def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, group
     )
 
 
-class ResNet(nn.Module):
+class ResNet(ch.nn.Module):
     def __init__(self, block_type, num_blocks, last_layer_stride=2):
         super(ResNet, self).__init__()
         self.inplanes = 64
         self.block = block_type
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.relu = nn.ReLU(True)
-        self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.conv1 = ch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = ch.nn.BatchNorm2d(64)
+        self.relu = ch.nn.ReLU(True)
+        self.pool = ch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.layer1 = self._make_layer(num_blocks[0], 64)
         self.layer2 = self._make_layer(
@@ -143,7 +144,7 @@ class ResNet(nn.Module):
                 )
             )
             self.inplanes = planes * self.block.expansion
-        return nn.Sequential(*layers)
+        return ch.nn.Sequential(*layers)
 
     def forward(self, x, **kwargs):
         out = self.conv1(x)
@@ -170,14 +171,14 @@ def rn_50(last_layer_stride=2):
     return ResNet(BottleNeck, [3, 4, 6, 3], last_layer_stride)
 
 
-class GAP(nn.Module):
+class GAP(ch.nn.Module):
     """Global Average pooling
         Widely used in ResNet, Inception, DenseNet, etc.
      """
 
     def __init__(self):
         super(GAP, self).__init__()
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool = ch.nn.AdaptiveAvgPool2d((1, 1))
 
     def forward(self, x):
         x = self.avgpool(x)
@@ -185,7 +186,7 @@ class GAP(nn.Module):
         return x
 
 
-class Network(nn.Module):
+class Network(ch.nn.Module):
     def __init__(self, mode="train", num_classes=8142):
         super(Network, self).__init__()
         self.num_classes = num_classes
@@ -193,7 +194,7 @@ class Network(nn.Module):
 
         self.mode = mode
         self.module = GAP()
-        self.classifier = nn.Linear(2048, self.num_classes, bias=True)
+        self.classifier = ch.nn.Linear(2048, self.num_classes, bias=True)
 
     def forward(self, x, **kwargs):
         if "feature_flag" in kwargs or "feature_cb" in kwargs or "feature_rb" in kwargs:
@@ -227,7 +228,7 @@ class Network(nn.Module):
         blocks_info = [3, 4, 6, 3]
         return layers, blocks_info
 
-        def extract_feature(self, x, **kwargs):
+    def extract_feature(self, x, **kwargs):
         x = self.backbone(x)
         x = self.module(x)
         x = x.view(x.shape[0], -1)
@@ -252,7 +253,7 @@ class Network(nn.Module):
 def construct_model():
     num_class = 8142
 
-    # TODO: Construct ResNet50
+    # Construct ResNet50
     model = Network("train", num_classes)
 
     """
