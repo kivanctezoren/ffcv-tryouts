@@ -60,14 +60,14 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
 
         if name == 'train':
             image_pipeline: List[Operation] = [
-                RandomResizedCropRGBImageDecoder(output_size=224),  # Default resizing arguments apply
+                RandomResizedCropRGBImageDecoder(output_size=[224,224]),  # Default resizing arguments apply
                 RandomHorizontalFlip()
             ]
         else:  # test
             image_pipeline: List[Operation] = [
                 # FIXME: Doesn't fully replicate BoT config.: Also need to resize with BoT transformation
                 #   "shorter_resize_for_crop"
-                CenterCropRGBImageDecoder(output_size=224)
+                CenterCropRGBImageDecoder(output_size=[224,224], ratio=1)
             ]
 
         # (Leave out normalization with mean & std. to match BoT config.)
@@ -251,7 +251,7 @@ class Network(ch.nn.Module):
 
 
 def construct_model():
-    num_class = 8142
+    num_classes = 8142
 
     # Construct ResNet50
     model = Network("train", num_classes)
