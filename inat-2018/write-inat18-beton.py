@@ -50,7 +50,7 @@ class INaturalist(Dataset):
 
         if self.transform is not None:
             img = self.transform(img)
-        # TODO: Transform to tensor or not?
+        # Skipping transform to tensor?
         #else:
         #    img = self.to_tensor(img)
 
@@ -71,9 +71,17 @@ def main():
     inat18_root = "/home/ktezoren/bot-lt/dsets/inat18/images"
     write_path = '/home/ktezoren/ffcv/beton-dsets'
     
+    # Valid. set is scaled by 8/7 to match the shorter_resize_for_crop transf. in BoT, will be center-cropped later
     datasets = {
-            "train": INaturalist(root=inat18_root, annotation="/home/ktezoren/bot-lt/dsets/inat18/train2018.json"),
-            "val": INaturalist(root=inat18_root, annotation="/home/ktezoren/bot-lt/dsets/inat18/val2018.json")
+            "train": INaturalist(
+                root=inat18_root,
+                annotation="/home/ktezoren/bot-lt/dsets/inat18/train2018.json"
+                ),
+            "val": INaturalist(
+                root=inat18_root,
+                annotation="/home/ktezoren/bot-lt/dsets/inat18/val2018.json",
+                transform=transforms.Resize(256)  # 224 * (8 / 7)
+                )
             }
 
 
