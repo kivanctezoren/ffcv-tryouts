@@ -1,0 +1,11 @@
+data:
+  train_dataset: /home/ktezoren/ffcv/beton-dsets/inat18_train.beton
+  val_dataset: /home/ktezoren/ffcv/beton-dsets/inat18_val.beton
+training:
+  batch_size: 128
+  epochs: 100
+  lr: 0.2
+  momentum: 0.9
+  weight_decay: 1e-4
+  lr_tta: false
+  num_workers: 8
