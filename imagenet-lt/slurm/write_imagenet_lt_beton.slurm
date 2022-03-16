@@ -10,7 +10,9 @@
 #export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-10.0/lib64
 
 source activate ffcv
-python3 write-imagenet-lt-beton.py 
+python3 write-imagenet-lt-beton.py \
+	--cfg.max_resolution=224 \
+	--cfg.num_workers=16
 
 echo "--- FFCV Job (write-imagenet-lt-beton) Done ---"
 
