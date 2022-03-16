@@ -11,6 +11,7 @@
 
 source activate ffcv
 python3 write-imagenet-lt-beton.py \
+	--cfg.write_path=...
 	--cfg.max_resolution=224 \
 	--cfg.num_workers=16
 
