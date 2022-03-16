@@ -10,7 +10,7 @@
 #export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-10.0/lib64
 
 source activate ffcv
-python3 write-inat18-beton.py 
+python3 write_inat18_beton.py 
 
 echo "--- FFCV Job (write-inat18-beton) Done ---"
 
