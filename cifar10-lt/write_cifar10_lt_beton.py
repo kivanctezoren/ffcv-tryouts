@@ -155,7 +155,7 @@ class CIFAR(BaseSet):
 
 def main():
 
-    cifar_json_path = "~/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/"
+    cifar_json_path = "/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/"
     train_json_path = cifar_json_path + "cifar10_imbalance50_train.json"
     valid_json_path = cifar_json_path + "cifar10_imbalance50_valid.json"
 
