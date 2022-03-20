@@ -20,14 +20,25 @@ import torch
 import json, os, random, time
 import cv2
 import torchvision.transforms as transforms
-from bot_lt_transform_wrapper import TRANSFORMS
 import numpy as np
-from utils.utils import get_category_list
 import math
 from PIL import Image
 
+
+# From BoT's utils:
+def get_category_list(annotations, num_classes):
+    num_list = [0] * num_classes
+    cat_list = []
+    print("Weight List has been produced")
+    for anno in annotations:
+        category_id = anno["category_id"]
+        num_list[category_id] += 1
+        cat_list.append(category_id)
+    return num_list, cat_list 
+
+
 class BaseSet(Dataset):
-    def __init__(self, mode="train"):
+    def __init__(self, mode="train", sampler_type="default", two_stage_training=False):
         self.mode = mode
         self.input_size = (32,32)
         self.color_space = 'RGB'
@@ -47,18 +58,27 @@ class BaseSet(Dataset):
             self.all_info = json.load(f)
         self.num_classes = self.all_info["num_classes"]
 
-        if not self.cfg.DATASET.USE_CAM_BASED_DATASET or self.mode != 'train':
+        """
+        if not self.mode != 'train':
             self.data = self.all_info['annotations']
         else:
             assert os.path.isfile(self.cfg.DATASET.CAM_DATA_JSON_SAVE_PATH), \
                 'the CAM-based generated json file does not exist!'
             self.data = json.load(open(self.cfg.DATASET.CAM_DATA_JSON_SAVE_PATH))
+        """
+
+        self.data = self.all_info['annotations']
+
         print("Contain {} images of {} classes".format(len(self.data), self.num_classes))
 
     def update(self, epoch):
-        self.epoch = max(0, epoch-self.cfg.TRAIN.TWO_STAGE.START_EPOCH) if self.cfg.TRAIN.TWO_STAGE.DRS else epoch
-        if self.cfg.TRAIN.SAMPLER.WEIGHTED_SAMPLER.TYPE == "progressive":
-            self.progress_p = epoch/self.cfg.TRAIN.MAX_EPOCH * self.class_p + (1-epoch/self.cfg.TRAIN.MAX_EPOCH)*self.instance_p
+        # TODO: Placeholder twostage_startepoch value used. Pass value as config. if two stage will be implemented
+        twostage_startepoch = 30
+        self.epoch = max(0, epoch - twostage_startepoch) if two_stage_training else epoch
+        if self.sampler_type == "progressive":
+            # TODO: Placeholder max_epoch value used. Pass max_epoch value as config. when sampler is being implemented
+            max_epoch = 100
+            self.progress_p = epoch/max_epoch * self.class_p + (1-epoch/max_epoch)*self.instance_p
             print('self.progress_p', self.progress_p)
 
 
@@ -133,7 +153,7 @@ class CIFAR(BaseSet):
         return image, image_label
 
 
-def main(train_dataset, val_dataset):
+def main():
 
     cifar_json_path = "~/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/"
     train_json_path = cifar_json_path + "cifar10_imbalance50_train.json"
