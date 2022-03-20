@@ -20,7 +20,7 @@ import torch
 import json, os, random, time
 import cv2
 import torchvision.transforms as transforms
-from data_transform.transform_wrapper import TRANSFORMS
+from bot_lt_transform_wrapper import TRANSFORMS
 import numpy as np
 from utils.utils import get_category_list
 import math
