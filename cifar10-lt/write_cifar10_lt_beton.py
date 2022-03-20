@@ -40,7 +40,7 @@ def get_category_list(annotations, num_classes):
 class BaseSet(Dataset):
     def __init__(self, mode="train", sampler_type="default", two_stage_training=False):
         self.mode = mode
-        self.input_size = (32,32)
+        self.input_size = (32, 32)
         self.color_space = 'RGB'
         self.size = self.input_size
 
@@ -50,7 +50,7 @@ class BaseSet(Dataset):
         if self.mode == "train":
             print("Loading train data ...", end=" ")
             self.json_path = '/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/cifar10_imbalance50_train.json'
-        elif "valid" in self.mode:
+        else:  # valid
             print("Loading valid data ...", end=" ")
             self.json_path = '/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/cifar10_imbalance50_valid.json'
 
@@ -90,7 +90,7 @@ class BaseSet(Dataset):
         meta = dict()
         image = self.transform(img)
         image_label = (
-            now_info["category_id"] if "test" not in self.mode else 0
+            now_info["category_id"] if "valid" not in self.mode else 0
         )  # 0-index
         if self.mode not in ["train", "valid"]:
            meta["image_id"] = now_info["image_id"]
@@ -154,18 +154,17 @@ class CIFAR(BaseSet):
 
 
 def main():
-
     cifar_json_path = "/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/"
     train_json_path = cifar_json_path + "cifar10_imbalance50_train.json"
     valid_json_path = cifar_json_path + "cifar10_imbalance50_valid.json"
 
     datasets = {
         'train': CIFAR('train'),
-        'test': CIFAR('test')
+        'valid': CIFAR('valid')
         }
 
     for (name, ds) in datasets.items():
-        path = '../beton-dstest/cifar10_imbalance50_train.beton' if name == 'train' else '../beton-dsets/cifar10_imbalance50_train.beton'
+        path = '../beton-dsets/cifar10_imbalance50_train.beton' if name == 'train' else '../beton-dsets/cifar10_imbalance50_valid.beton'
         writer = DatasetWriter(path, {
             'image': RGBImageField(),
             'label': IntField()
