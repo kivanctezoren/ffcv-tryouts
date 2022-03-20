@@ -49,10 +49,10 @@ class BaseSet(Dataset):
 
         if self.mode == "train":
             print("Loading train data ...", end=" ")
-            self.json_path = '/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/cifar10_imbalance50_train.json'
+            self.json_path = './jsons/im50/cifar10_imbalance50_train.json'
         else:  # valid
             print("Loading valid data ...", end=" ")
-            self.json_path = '/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/cifar10_imbalance50_valid.json'
+            self.json_path = './jsons/im50/cifar10_imbalance50_valid.json'
 
         with open(self.json_path, "r") as f:
             self.all_info = json.load(f)
@@ -154,9 +154,9 @@ class CIFAR(BaseSet):
 
 
 def main():
-    cifar_json_path = "/home/ktezoren/bot-lt/dsets/cifar-lt/converted/cifar10_imbalance50/"
-    train_json_path = cifar_json_path + "cifar10_imbalance50_train.json"
-    valid_json_path = cifar_json_path + "cifar10_imbalance50_valid.json"
+    #cifar_json_path = "./jsons/im50/"
+    #train_json_path = cifar_json_path + "cifar10_imbalance50_train.json"
+    #valid_json_path = cifar_json_path + "cifar10_imbalance50_valid.json"
 
     datasets = {
         'train': CIFAR('train'),
@@ -164,7 +164,8 @@ def main():
         }
 
     for (name, ds) in datasets.items():
-        path = '../beton-dsets/cifar10_imbalance50_train.beton' if name == 'train' else '../beton-dsets/cifar10_imbalance50_valid.beton'
+        # TODO: Support for different jsons with different imbalance settings?
+        path = '../beton-dsets/cifar10_lt_im50_train.beton' if name == 'train' else '../beton-dsets/cifar10_lt_im50_valid.beton'
         writer = DatasetWriter(path, {
             'image': RGBImageField(),
             'label': IntField()
