@@ -83,10 +83,10 @@ class BaseSet(Dataset):
 
 
     def __getitem__(self, index):
-        print('start get item...')
+        #print('start get item...')
         now_info = self.data[index]
         img = self._get_image(now_info)
-        print('complete get img...')
+        #print('complete get img...')
         meta = dict()
         image = self.transform(img)
         image_label = (
@@ -147,7 +147,7 @@ class CIFAR(BaseSet):
 
     def __getitem__(self, index):        
         now_info = self.data[index]
-        imgage = self._get_image(now_info)
+        image = self._get_image(now_info)
         image_label = now_info['category_id']  # 0-index
         
         return image, image_label
