@@ -1,25 +1,5 @@
-"""
-Fast training script for CIFAR-10 using FFCV.
-For tutorial, see https://docs.ffcv.io/ffcv_examples/cifar10.html.
+# TODO: Not all modules may be needed
 
-First, from the same directory, run:
-
-    `python write_datasets.py --data.train_dataset [TRAIN_PATH] \
-                              --data.val_dataset [VAL_PATH]`
-
-to generate the FFCV-formatted versions of CIFAR.
-
-Then, simply run this to train models with default hyperparameters:
-
-    `python train_cifar.py --config-file default_config.yaml`
-
-You can override arguments as follows:
-
-    `python train_cifar.py --config-file default_config.yaml \
-                           --training.lr 0.2 --training.num_workers 4 ... [etc]`
-
-or by using a different config file.
-"""
 from argparse import ArgumentParser
 from typing import List
 import time
@@ -37,7 +17,7 @@ from fastargs.decorators import param
 from fastargs.validation import And, OneOf
 
 from ffcv.fields import IntField, RGBImageField
-from ffcv.fields.decoders import IntDecoder, SimpleRGBImageDecoder
+from ffcv.fields.decoders import IntDecoder, RandomResizedCropRGBImageDecoder, CenterCropRGBImageDecoder
 from ffcv.loader import Loader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import RandomHorizontalFlip, Cutout, \
@@ -45,14 +25,13 @@ from ffcv.transforms import RandomHorizontalFlip, Cutout, \
 from ffcv.transforms.common import Squeeze
 from ffcv.writer import DatasetWriter
 
+
 Section('training', 'Hyperparameters').params(
     lr=Param(float, 'The learning rate to use', required=True),
     epochs=Param(int, 'Number of epochs to run for', required=True),
-    lr_peak_epoch=Param(int, 'Peak epoch for cyclic lr', required=True),
     batch_size=Param(int, 'Batch size', default=512),
     momentum=Param(float, 'Momentum for SGD', default=0.9),
     weight_decay=Param(float, 'l2 weight decay', default=5e-4),
-    label_smoothing=Param(float, 'Value of label smoothing', default=0.1),
     num_workers=Param(int, 'The number of workers', default=8),
     lr_tta=Param(bool, 'Test time augmentation by averaging with horizontally flipped version', default=True)
 )
@@ -62,6 +41,7 @@ Section('data', 'data related stuff').params(
     val_dataset=Param(str, '.dat file to use for validation', required=True),
 )
 
+
 @param('data.train_dataset')
 @param('data.val_dataset')
 @param('training.batch_size')
@@ -70,31 +50,35 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
     paths = {
         'train': train_dataset,
         'test': val_dataset
-
     }
 
     start_time = time.time()
-    CIFAR_MEAN = [125.307, 122.961, 113.8575]
-    CIFAR_STD = [51.5865, 50.847, 51.255]
     loaders = {}
 
     for name in ['train', 'test']:
         label_pipeline: List[Operation] = [IntDecoder(), ToTensor(), ToDevice('cuda:0'), Squeeze()]
-        image_pipeline: List[Operation] = [SimpleRGBImageDecoder()]
+
         if name == 'train':
-            image_pipeline.extend([
-                RandomHorizontalFlip(),
-                RandomTranslate(padding=2, fill=tuple(map(int, CIFAR_MEAN))),
-                Cutout(4, tuple(map(int, CIFAR_MEAN))),
-            ])
+            image_pipeline: List[Operation] = [
+                RandomResizedCropRGBImageDecoder(output_size=[224,224]),  # Default resizing arguments apply
+                RandomHorizontalFlip()
+            ]
+        else:  # test
+            image_pipeline: List[Operation] = [
+                # FIXME: Doesn't fully replicate BoT config.: Also need to resize with BoT transformation
+                #   "shorter_resize_for_crop"
+                CenterCropRGBImageDecoder(output_size=[224,224], ratio=1)
+            ]
+
+        # (Leave out normalization with mean & std. to match BoT config.)
         image_pipeline.extend([
             ToTensor(),
             ToDevice('cuda:0', non_blocking=True),
             ToTorchImage(),
-            Convert(ch.float16),
-            torchvision.transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
+            Convert(ch.float16)  # TODO: float16 or 32?
         ])
         
+        # Shuffle if train, do not if validation
         ordering = OrderOption.RANDOM if name == 'train' else OrderOption.SEQUENTIAL
 
         loaders[name] = Loader(paths[name], batch_size=batch_size, num_workers=num_workers,
@@ -127,8 +111,201 @@ def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, group
             ch.nn.ReLU(inplace=True)
     )
 
+
+class ResNet(ch.nn.Module):
+    def __init__(self, block_type, num_blocks, last_layer_stride=2):
+        super(ResNet, self).__init__()
+        self.inplanes = 64
+        self.block = block_type
+        self.conv1 = ch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = ch.nn.BatchNorm2d(64)
+        self.relu = ch.nn.ReLU(True)
+        self.pool = ch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        self.layer1 = self._make_layer(num_blocks[0], 64)
+        self.layer2 = self._make_layer(
+            num_blocks[1], 128, stride=2
+        )
+        self.layer3 = self._make_layer(
+            num_blocks[2], 256, stride=2
+        )
+        self.layer4 = self._make_layer(
+            num_blocks[3],
+            512,
+            stride=last_layer_stride,
+        )
+    def _make_layer(self, num_block, planes, stride=1):
+        strides = [stride] + [1] * (num_block - 1)
+        layers = []
+        for now_stride in strides:
+            layers.append(
+                self.block(
+                    self.inplanes, planes, stride=now_stride
+                )
+            )
+            self.inplanes = planes * self.block.expansion
+        return ch.nn.Sequential(*layers)
+
+    def forward(self, x, **kwargs):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.pool(out)
+
+        out = self.layer1(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer1':
+            out = kwargs['coef']*out + (1-kwargs['coef'])*out[kwargs['index']]
+        out = self.layer2(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer2':
+            out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
+        out = self.layer3(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer3':
+            out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
+        out = self.layer4(out)
+        if 'layer' in kwargs and kwargs['layer'] == 'layer4':
+            out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
+        return out
+
+
+class BottleNeck(ch.nn.Module):
+
+    expansion = 4
+
+    def __init__(self, inplanes, planes, stride=1):
+        super(BottleNeck, self).__init__()
+        self.conv1 = ch.nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        self.bn1 = ch.nn.BatchNorm2d(planes)
+        self.relu1 = ch.nn.ReLU(True)
+        self.conv2 = ch.nn.Conv2d(
+            planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
+        self.bn2 = ch.nn.BatchNorm2d(planes)
+        self.relu2 = ch.nn.ReLU(True)
+        self.conv3 = ch.nn.Conv2d(
+            planes, planes * self.expansion, kernel_size=1, bias=False
+        )
+        self.bn3 = ch.nn.BatchNorm2d(planes * self.expansion)
+        if stride != 1 or self.expansion * planes != inplanes:
+            self.downsample = ch.nn.Sequential(
+                ch.nn.Conv2d(
+                    inplanes,
+                    self.expansion * planes,
+                    kernel_size=1,
+                    stride=stride,
+                    bias=False,
+                ),
+                ch.nn.BatchNorm2d(self.expansion * planes),
+            )
+        else:
+            self.downsample = None
+        self.relu = ch.nn.ReLU(True)
+
+    def forward(self, x):
+        out = self.relu1(self.bn1(self.conv1(x)))
+
+        out = self.relu2(self.bn2(self.conv2(out)))
+
+        out = self.bn3(self.conv3(out))
+
+        if self.downsample != None:
+            residual = self.downsample(x)
+        else:
+            residual = x
+        out = out + residual
+        out = self.relu(out)
+        return out
+
+
+def rn_50(last_layer_stride=2):
+    return ResNet(BottleNeck, [3, 4, 6, 3], last_layer_stride)
+
+
+class GAP(ch.nn.Module):
+    """Global Average pooling
+        Widely used in ResNet, Inception, DenseNet, etc.
+     """
+
+    def __init__(self):
+        super(GAP, self).__init__()
+        self.avgpool = ch.nn.AdaptiveAvgPool2d((1, 1))
+
+    def forward(self, x):
+        x = self.avgpool(x)
+        #         x = x.view(x.shape[0], -1)
+        return x
+
+
+class Network(ch.nn.Module):
+    def __init__(self, mode="train", num_classes=8142):
+        super(Network, self).__init__()
+        self.num_classes = num_classes
+        self.backbone = rn_50(last_layer_stride=2)
+
+        self.mode = mode
+        self.module = GAP()
+        self.classifier = ch.nn.Linear(2048, self.num_classes, bias=True)
+
+    def forward(self, x, **kwargs):
+        if "feature_flag" in kwargs or "feature_cb" in kwargs or "feature_rb" in kwargs:
+            return self.extract_feature(x, **kwargs)
+        elif "classifier_flag" in kwargs:
+            return self.classifier(x)
+        elif 'feature_maps_flag' in kwargs:
+            return self.extract_feature_maps(x)
+        elif 'layer' in kwargs and 'index' in kwargs:
+            if kwargs['layer'] in ['layer1', 'layer2', 'layer3']:
+                x = self.backbone.forward(x, index=kwargs['index'], layer=kwargs['layer'], coef=kwargs['coef'])
+            else:
+                x = self.backbone(x)
+            x = self.module(x)
+            if kwargs['layer'] == 'pool':
+                x = kwargs['coef']*x+(1-kwargs['coef'])*x[kwargs['index']]
+            x = x.view(x.shape[0], -1)
+            x = self.classifier(x)
+            if kwargs['layer'] == 'fc':
+                x = kwargs['coef']*x + (1-kwargs['coef'])*x[kwargs['index']]
+            return x
+
+        x = self.backbone(x)
+        x = self.module(x)
+        x = x.view(x.shape[0], -1)
+        x = self.classifier(x)
+        return x
+
+    def get_backbone_layer_info(self):
+        layers = 4
+        blocks_info = [3, 4, 6, 3]
+        return layers, blocks_info
+
+    def extract_feature(self, x, **kwargs):
+        x = self.backbone(x)
+        x = self.module(x)
+        x = x.view(x.shape[0], -1)
+        return x
+
+    def extract_feature_maps(self, x):
+        x = self.backbone(x)
+        return x
+
+    def freeze_backbone(self):
+        print("Freezing backbone .......")
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+    def get_feature_length(self):
+        return 2048
+
+    def _get_module(self):
+        return GAP()
+
+
 def construct_model():
-    num_class = 10
+    num_classes = 8142
+
+    # Construct ResNet50
+    model = Network("train", num_classes)
+
+    """
     model = ch.nn.Sequential(
         conv_bn(3, 64, kernel_size=3, stride=1, padding=1),
         conv_bn(64, 128, kernel_size=5, stride=2, padding=2),
@@ -142,26 +319,23 @@ def construct_model():
         ch.nn.Linear(128, num_class, bias=False),
         Mul(0.2)
     )
+    """
+
     model = model.to(memory_format=ch.channels_last).cuda()
     return model
+
 
 @param('training.lr')
 @param('training.epochs')
 @param('training.momentum')
 @param('training.weight_decay')
-@param('training.label_smoothing')
-@param('training.lr_peak_epoch')
 def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
           momentum=None, weight_decay=None, lr_peak_epoch=None):
     opt = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     iters_per_epoch = len(loaders['train'])
-    # Cyclic LR with single triangle
-    lr_schedule = np.interp(np.arange((epochs+1) * iters_per_epoch),
-                            [0, lr_peak_epoch * iters_per_epoch, epochs * iters_per_epoch],
-                            [0, 1, 0])
-    scheduler = lr_scheduler.LambdaLR(opt, lr_schedule.__getitem__)
-    scaler = GradScaler()
-    loss_fn = CrossEntropyLoss(label_smoothing=label_smoothing)
+    scheduler = lr_scheduler.MultiStepLR(opt, [60, 80], 0.1)
+    scaler = GradScaler(init_scale=16384.0)
+    loss_fn = CrossEntropyLoss()
 
     for _ in range(epochs):
         for ims, labs in tqdm(loaders['train']):
@@ -204,3 +378,4 @@ if __name__ == "__main__":
     train(model, loaders)
     print(f'Total time: {time.time() - start_time:.5f}')
     evaluate(model, loaders)
+

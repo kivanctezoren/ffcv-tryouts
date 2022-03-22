@@ -378,3 +378,4 @@ if __name__ == "__main__":
     train(model, loaders)
     print(f'Total time: {time.time() - start_time:.5f}')
     evaluate(model, loaders)
+
