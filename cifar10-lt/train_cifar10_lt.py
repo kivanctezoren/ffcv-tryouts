@@ -60,15 +60,11 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
 
         if name == 'train':
             image_pipeline: List[Operation] = [
-                RandomResizedCropRGBImageDecoder(output_size=[224,224]),  # Default resizing arguments apply
+                RandomResizedCropRGBImageDecoder(output_size=[32, 32]),  # Default resizing arguments apply
                 RandomHorizontalFlip()
             ]
-        else:  # test
-            image_pipeline: List[Operation] = [
-                # FIXME: Doesn't fully replicate BoT config.: Also need to resize with BoT transformation
-                #   "shorter_resize_for_crop"
-                CenterCropRGBImageDecoder(output_size=[224,224], ratio=1)
-            ]
+        # No transformations for test/valid 
+
 
         # (Leave out normalization with mean & std. to match BoT config.)
         image_pipeline.extend([
@@ -78,7 +74,7 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
             Convert(ch.float16)  # TODO: float16 or 32?
         ])
         
-        # Shuffle if train, do not if validation
+        # Shuffle if train, do not if validation (as in BoT config.)
         ordering = OrderOption.RANDOM if name == 'train' else OrderOption.SEQUENTIAL
 
         loaders[name] = Loader(paths[name], batch_size=batch_size, num_workers=num_workers,
@@ -215,7 +211,6 @@ class BottleNeck(ch.nn.Module):
         out = self.relu(out)
         return out
 
-
 def rn_50(last_layer_stride=2):
     return ResNet(BottleNeck, [3, 4, 6, 3], last_layer_stride)
 
@@ -329,12 +324,17 @@ def construct_model():
 @param('training.epochs')
 @param('training.momentum')
 @param('training.weight_decay')
-def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
-          momentum=None, weight_decay=None, lr_peak_epoch=None):
+@param('training.lr_peak_epoch')
+def train(model, loaders, lr=None, epochs=None, momentum=None, weight_decay=None,
+        lr_peak_epoch=None):
     opt = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     iters_per_epoch = len(loaders['train'])
-    scheduler = lr_scheduler.MultiStepLR(opt, [60, 80], 0.1)
+    # FIXME: Add also linear warmup in the first 5 epochs to the scheduler.
+    #   Use the lr_peak_epoch parameter.
+    #   (Should use WarmupMultiStepLR from BoT's utils.lr_scheduler.WarmupMultiStepLR)
+    scheduler = lr_scheduler.MultiStepLR(opt, [160, 180], 0.01)
     #scaler = GradScaler(init_scale=16384.0)
+    # FIXME: Use BoT CE Loss instead
     loss_fn = CrossEntropyLoss()
 
     for _ in range(epochs):
@@ -354,6 +354,7 @@ def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
             scheduler.step()
 
 
+# TODO: Should check whether the evaluation method is the same as BoT
 @param('training.lr_tta')
 def evaluate(model, loaders, lr_tta=False):
     model.eval()
@@ -379,6 +380,8 @@ if __name__ == "__main__":
     config.summary()
 
     loaders, start_time = make_dataloaders()
+
+    # FIXME: Use res32_cifar from BoT instead. Remove leftover ResNet-50 class & func. definitions
     model = construct_model()
     train(model, loaders)
     print(f'Total time: {time.time() - start_time:.5f}')
