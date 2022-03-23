@@ -3,10 +3,12 @@
 from argparse import ArgumentParser
 from typing import List
 import time
-import math
-from bisect import bisect_right
 import numpy as np
 from tqdm import tqdm
+
+#Needed for WarmUpLRScheduler.
+import torch, math
+from bisect import bisect_right
 
 import torch as ch
 import torch.nn as nn
@@ -88,34 +90,55 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
 
     return loaders, start_time
 
-class Mul(nn.Module):
+# Model (from KakaoBrain: https://github.com/wbaek/torchskeleton)
+class Mul(ch.nn.Module):
     def __init__(self, weight):
        super(Mul, self).__init__()
        self.weight = weight
     def forward(self, x): return x * self.weight
 
-
-class Flatten(nn.Module):
+class Flatten(ch.nn.Module):
     def forward(self, x): return x.view(x.size(0), -1)
 
-
-class Residual(nn.Module):
+class Residual(ch.nn.Module):
     def __init__(self, module):
         super(Residual, self).__init__()
         self.module = module
     def forward(self, x): return x + self.module(x)
 
-
 def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, groups=1):
-    return nn.Sequential(
-            nn.Conv2d(channels_in, channels_out, kernel_size=kernel_size,
+    return ch.nn.Sequential(
+            ch.nn.Conv2d(channels_in, channels_out, kernel_size=kernel_size,
                          stride=stride, padding=padding, groups=groups, bias=False),
-            nn.BatchNorm2d(channels_out),
-            nn.ReLU(inplace=True)
+            ch.nn.BatchNorm2d(channels_out),
+            ch.nn.ReLU(inplace=True)
     )
 
 
-# ResNet32-related classes taken from BoT:
+    """
+Properly implemented ResNet-s for CIFAR10 as described in paper [1].
+The implementation and structure of this file is hugely influenced by [2]
+which is implemented for ImageNet and doesn't have option A for identity.
+Moreover, most of the implementations on the web is copy-paste from
+torchvision's resnet and has wrong number of params.
+Proper ResNet-s for CIFAR10 (for fair comparision and etc.) has following
+number of layers and parameters:
+name      | layers | params
+ResNet20  |    20  | 0.27M
+ResNet32  |    32  | 0.46M
+ResNet44  |    44  | 0.66M
+ResNet56  |    56  | 0.85M
+ResNet110 |   110  |  1.7M
+ResNet1202|  1202  | 19.4m
+which this implementation indeed has.
+Reference:
+[1] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
+    Deep Residual Learning for Image Recognition. arXiv:1512.03385
+[2] https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
+If you use this implementation in you work, please don't forget to mention the
+author, Yerlan Idelbayev.
+"""
+
 def _weights_init(m):
     classname = m.__class__.__name__
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -232,7 +255,6 @@ class ResNet_Cifar(nn.Module):
             out = kwargs['coef']*out+(1-kwargs['coef'])*out[kwargs['index']]
         return out
 
-
 def res32_cifar(
     cfg,
     pretrain=True,
@@ -246,21 +268,109 @@ def res32_cifar(
         print("Choose to train from scratch")
     return resnet
 
-
-class GAP(nn.Module):
+class GAP(ch.nn.Module):
     """Global Average pooling
         Widely used in ResNet, Inception, DenseNet, etc.
      """
 
     def __init__(self):
         super(GAP, self).__init__()
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool = ch.nn.AdaptiveAvgPool2d((1, 1))
 
     def forward(self, x):
         x = self.avgpool(x)
         #         x = x.view(x.shape[0], -1)
         return x
 
+
+class Network(ch.nn.Module):
+    def __init__(self, mode="train", num_classes=8142):
+        super(Network, self).__init__()
+        self.num_classes = num_classes
+        self.backbone = rn_50(last_layer_stride=2)
+
+        self.mode = mode
+        self.module = GAP()
+        self.classifier = ch.nn.Linear(2048, self.num_classes, bias=True)
+
+    def forward(self, x, **kwargs):
+        if "feature_flag" in kwargs or "feature_cb" in kwargs or "feature_rb" in kwargs:
+            return self.extract_feature(x, **kwargs)
+        elif "classifier_flag" in kwargs:
+            return self.classifier(x)
+        elif 'feature_maps_flag' in kwargs:
+            return self.extract_feature_maps(x)
+        elif 'layer' in kwargs and 'index' in kwargs:
+            if kwargs['layer'] in ['layer1', 'layer2', 'layer3']:
+                x = self.backbone.forward(x, index=kwargs['index'], layer=kwargs['layer'], coef=kwargs['coef'])
+            else:
+                x = self.backbone(x)
+            x = self.module(x)
+            if kwargs['layer'] == 'pool':
+                x = kwargs['coef']*x+(1-kwargs['coef'])*x[kwargs['index']]
+            x = x.view(x.shape[0], -1)
+            x = self.classifier(x)
+            if kwargs['layer'] == 'fc':
+                x = kwargs['coef']*x + (1-kwargs['coef'])*x[kwargs['index']]
+            return x
+
+        x = self.backbone(x)
+        x = self.module(x)
+        x = x.view(x.shape[0], -1)
+        x = self.classifier(x)
+        return x
+
+    def get_backbone_layer_info(self):
+        layers = 4
+        blocks_info = [3, 4, 6, 3]
+        return layers, blocks_info
+
+    def extract_feature(self, x, **kwargs):
+        x = self.backbone(x)
+        x = self.module(x)
+        x = x.view(x.shape[0], -1)
+        return x
+
+    def extract_feature_maps(self, x):
+        x = self.backbone(x)
+        return x
+
+    def freeze_backbone(self):
+        print("Freezing backbone .......")
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+    def get_feature_length(self):
+        return 2048
+
+    def _get_module(self):
+        return GAP()
+
+
+def construct_model():
+    num_classes = 8142
+
+    # Construct ResNet50
+    model = Network("train", num_classes)
+
+    """
+    model = ch.nn.Sequential(
+        conv_bn(3, 64, kernel_size=3, stride=1, padding=1),
+        conv_bn(64, 128, kernel_size=5, stride=2, padding=2),
+        Residual(ch.nn.Sequential(conv_bn(128, 128), conv_bn(128, 128))),
+        conv_bn(128, 256, kernel_size=3, stride=1, padding=1),
+        ch.nn.MaxPool2d(2),
+        Residual(ch.nn.Sequential(conv_bn(256, 256), conv_bn(256, 256))),
+        conv_bn(256, 128, kernel_size=3, stride=1, padding=0),
+        ch.nn.AdaptiveMaxPool2d((1, 1)),
+        Flatten(),
+        ch.nn.Linear(128, num_class, bias=False),
+        Mul(0.2)
+    )
+    """
+
+    model = model.to(memory_format=ch.channels_last).cuda()
+    return model
 
 class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
     def __init__(
@@ -306,15 +416,18 @@ class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
             for base_lr in self.base_lrs
         ]
 
+DEBUG = False
+EPSILON = 1e-10
 
-# TODO: Epsilon is unused?
-# EPSILON = 1e-10
 class CrossEntropy(nn.Module):
-    def __init__(self, debug=False):
+    def __init__(self):
         super(CrossEntropy, self).__init__()
         self.para_dict = para_dict
         self.num_classes = 10
         self.device = "cuda"
+
+
+
 
     def forward(self, inputs, targets, **kwargs):
         """
@@ -333,7 +446,7 @@ class CrossEntropy(nn.Module):
         start = (epoch-1) // self.drw_start_epoch
         if start and self.drw:
             self.weight_list = torch.FloatTensor(np.array([min(self.num_class_list) / N for N in self.num_class_list])).to(self.device)
-        if debug:
+        if DEBUG:
             print('*'*100)
             print(self.weight_list)
             print(self.drw)
@@ -348,10 +461,14 @@ class CrossEntropy(nn.Module):
 def train(model, loaders, lr=None, epochs=None, momentum=None, weight_decay=None,
         lr_peak_epoch=None):
     opt = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    iters_per_epoch = len(loaders['train']) 
-    # TODO: Are defaults of other param.s correct?
-    scheduler = WarmupMultiStepLR(opt, [160, 180], gamma=0.01, warmup_epochs=lr_peak_epoch)
+    iters_per_epoch = len(loaders['train'])
+    # FIXME: Add also linear warmup in the first 5 epochs to the scheduler.
+    #   Use the lr_peak_epoch parameter.
+    #   (Should use WarmupMultiStepLR from BoT's utils.lr_scheduler.WarmupMultiStepLR)
+    scheduler = lr_scheduler.MultiStepLR(opt, [160, 180], 0.01, 5)
     #scaler = GradScaler(init_scale=16384.0)
+
+    # FIXME: Use BoT CE Loss instead
     loss_fn = CrossEntropy()
 
     for _ in range(epochs):
@@ -387,7 +504,6 @@ def evaluate(model, loaders, lr_tta=False):
                     total_num += ims.shape[0]
             print(f'{name} accuracy: {total_correct / total_num * 100:.1f}%')
 
-
 if __name__ == "__main__":
     config = get_current_config()
     parser = ArgumentParser(description='Fast CIFAR-10 training')
@@ -399,6 +515,7 @@ if __name__ == "__main__":
 
     loaders, start_time = make_dataloaders()
 
+    # FIXME/DONE: Use res32_cifar from BoT instead. Remove leftover ResNet-50 class & func. definitions
     model = res32_cifar()
     train(model, loaders)
     print(f'Total time: {time.time() - start_time:.5f}')
