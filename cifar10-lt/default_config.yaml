@@ -1,6 +1,6 @@
 data:
-  train_dataset: /home/ktezoren/ffcv/beton-dsets/cifar10-lt-train.beton
-  val_dataset: /home/ktezoren/ffcv/beton-dsets/cifar10-lt-test.beton
+  train_dataset: /home/ktezoren/ffcv/beton-dsets/cifar10_lt_im50_train.beton
+  val_dataset: /home/ktezoren/ffcv/beton-dsets/cifar10_lt_im50_valid.beton
 training:
   batch_size: 128
   epochs: 200
