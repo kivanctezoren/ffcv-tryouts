@@ -26,7 +26,7 @@ from ffcv.fields.decoders import IntDecoder, RandomResizedCropRGBImageDecoder, C
 from ffcv.loader import Loader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import RandomHorizontalFlip, Cutout, \
-    RandomTranslate, Convert, ToDevice, ToTensor, ToTorchImage
+    RandomTranslate, Convert, ToDevice, ToTensor, ToTorchImage, NormalizeImage
 from ffcv.transforms.common import Squeeze
 from ffcv.writer import DatasetWriter
 
@@ -76,7 +76,7 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
             ToTensor(),
             ToDevice('cuda:0', non_blocking=True),
             ToTorchImage(),
-            Convert(ch.float16)  # TODO: float16 or 32?
+            Convert(np.float16)  # TODO: float16 or 32?
         ])
         
         # Shuffle if train, do not if validation (as in BoT config.)
@@ -203,7 +203,7 @@ class ResNet_Cifar(nn.Module):
     def load_model(self, pretrain):
         print("Loading Backbone pretrain model from {}......".format(pretrain))
         model_dict = self.state_dict()
-        pretrain_dict = torch.load(pretrain)
+        pretrain_dict = ch.load(pretrain)
         pretrain_dict = pretrain_dict["state_dict"] if "state_dict" in pretrain_dict else pretrain_dict
         from collections import OrderedDict
 
@@ -234,8 +234,8 @@ class ResNet_Cifar(nn.Module):
 
 
 def res32_cifar(
-    cfg,
-    pretrain=True,
+    cfg=None,
+    pretrain=False,
     pretrained_model="",
     last_layer_stride=2,
 ):
@@ -262,7 +262,7 @@ class GAP(nn.Module):
         return x
 
 
-class WarmupMultiStepLR(torch.optim.lr_scheduler._LRScheduler):
+class WarmupMultiStepLR(ch.optim.lr_scheduler._LRScheduler):
     def __init__(
         self,
         optimizer,
@@ -332,7 +332,7 @@ class CrossEntropy(nn.Module):
         """
         start = (epoch-1) // self.drw_start_epoch
         if start and self.drw:
-            self.weight_list = torch.FloatTensor(np.array([min(self.num_class_list) / N for N in self.num_class_list])).to(self.device)
+            self.weight_list = ch.FloatTensor(np.array([min(self.num_class_list) / N for N in self.num_class_list])).to(self.device)
         if debug:
             print('*'*100)
             print(self.weight_list)
