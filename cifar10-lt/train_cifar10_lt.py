@@ -36,6 +36,7 @@ Section('training', 'Hyperparameters').params(
     epochs=Param(int, 'Number of epochs to run for', required=True),
     batch_size=Param(int, 'Batch size', default=512),
     momentum=Param(float, 'Momentum for SGD', default=0.9),
+    lr_peak_epoch=Param(int, 'Number of epochs for LR warm-up', default=5),
     weight_decay=Param(float, 'l2 weight decay', default=5e-4),
     num_workers=Param(int, 'The number of workers', default=8),
     lr_tta=Param(bool, 'Test time augmentation by averaging with horizontally flipped version', default=True)
