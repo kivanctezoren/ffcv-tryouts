@@ -77,7 +77,7 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
             ToTensor(),
             ToDevice('cuda:0', non_blocking=True),
             ToTorchImage(),
-            Convert(np.float16)  # TODO: float16 or 32?
+            Convert(ch.float16)  # TODO: float16 or 32?
         ])
         
         # Shuffle if train, do not if validation (as in BoT config.)
@@ -88,32 +88,6 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
                                pipelines={'image': image_pipeline, 'label': label_pipeline})
 
     return loaders, start_time
-
-class Mul(nn.Module):
-    def __init__(self, weight):
-       super(Mul, self).__init__()
-       self.weight = weight
-    def forward(self, x): return x * self.weight
-
-
-class Flatten(nn.Module):
-    def forward(self, x): return x.view(x.size(0), -1)
-
-
-class Residual(nn.Module):
-    def __init__(self, module):
-        super(Residual, self).__init__()
-        self.module = module
-    def forward(self, x): return x + self.module(x)
-
-
-def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, groups=1):
-    return nn.Sequential(
-            nn.Conv2d(channels_in, channels_out, kernel_size=kernel_size,
-                         stride=stride, padding=padding, groups=groups, bias=False),
-            nn.BatchNorm2d(channels_out),
-            nn.ReLU(inplace=True)
-    )
 
 
 # ResNet32-related classes taken from BoT:
@@ -313,7 +287,6 @@ class WarmupMultiStepLR(ch.optim.lr_scheduler._LRScheduler):
 class CrossEntropy(nn.Module):
     def __init__(self, debug=False):
         super(CrossEntropy, self).__init__()
-        self.para_dict = para_dict
         self.num_classes = 10
         self.device = "cuda"
 
