@@ -22,7 +22,8 @@ from fastargs.decorators import param
 from fastargs.validation import And, OneOf
 
 from ffcv.fields import IntField, RGBImageField
-from ffcv.fields.decoders import IntDecoder, RandomResizedCropRGBImageDecoder, CenterCropRGBImageDecoder
+from ffcv.fields.decoders import IntDecoder, RandomResizedCropRGBImageDecoder, \
+    CenterCropRGBImageDecoder, SimpleRGBImageDecoder
 from ffcv.loader import Loader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import RandomHorizontalFlip, Cutout, \
@@ -69,8 +70,10 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
                 RandomResizedCropRGBImageDecoder(output_size=[32, 32]),  # Default resizing arguments apply
                 RandomHorizontalFlip()
             ]
-        # No transformations for test/valid 
-
+        else:  # No transformations for test/valid
+            image_pipeline: List[Operation] = [
+                SimpleRGBImageDecoder()
+            ]
 
         # (Leave out normalization with mean & std. to match BoT config.)
         image_pipeline.extend([
