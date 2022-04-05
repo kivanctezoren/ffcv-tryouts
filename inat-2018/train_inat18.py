@@ -333,7 +333,7 @@ def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
     opt = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     iters_per_epoch = len(loaders['train'])
     scheduler = lr_scheduler.MultiStepLR(opt, [60, 80], 0.1)
-    #scaler = GradScaler(init_scale=16384.0)
+    scaler = GradScaler(init_scale=16384.0)
     loss_fn = CrossEntropyLoss()
 
     for _ in range(epochs):
@@ -343,12 +343,14 @@ def train(model, loaders, lr=None, epochs=None, label_smoothing=None,
                 out = model(ims)
                 loss = loss_fn(out, labs)
 
-            #scaler.scale(loss).backward()
-            #scaler.step(opt)
-            #scaler.update()
+            # If scaler is used:
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
 
-            loss.backward()
-            opt.step()
+            # When scaler is removed:
+            #loss.backward()
+            #opt.step()
 
             scheduler.step()
 
