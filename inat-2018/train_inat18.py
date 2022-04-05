@@ -65,9 +65,8 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
             ]
         else:  # test
             image_pipeline: List[Operation] = [
-                # FIXME: Doesn't fully replicate BoT config.: Also need to resize with BoT transformation
-                #   "shorter_resize_for_crop"
-                CenterCropRGBImageDecoder(output_size=[224,224], ratio=1)
+                CenterCropRGBImageDecoder(output_size=[224,224], ratio=1),  # TODO: Need to change ratio?
+                NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], type=np.float32)
             ]
 
         # (Leave out normalization with mean & std. to match BoT config.)
