@@ -21,7 +21,8 @@ from ffcv.fields.decoders import IntDecoder, RandomResizedCropRGBImageDecoder, C
 from ffcv.loader import Loader, OrderOption
 from ffcv.pipeline.operation import Operation
 from ffcv.transforms import RandomHorizontalFlip, Cutout, \
-    RandomTranslate, Convert, ToDevice, ToTensor, ToTorchImage
+    RandomTranslate, Convert, ToDevice, ToTensor, ToTorchImage, \
+    NormalizeImage
 from ffcv.transforms.common import Squeeze
 from ffcv.writer import DatasetWriter
 
@@ -66,7 +67,11 @@ def make_dataloaders(train_dataset=None, val_dataset=None, batch_size=None, num_
         else:  # test
             image_pipeline: List[Operation] = [
                 CenterCropRGBImageDecoder(output_size=[224,224], ratio=1),  # TODO: Need to change ratio?
-                NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], type=np.float32)
+                NormalizeImage(
+                    mean=np.array([0.485, 0.456, 0.406]),
+                    std=np.array([0.229, 0.224, 0.225]),
+                    type=np.float16
+                )
             ]
 
         # (Leave out normalization with mean & std. to match BoT config.)
