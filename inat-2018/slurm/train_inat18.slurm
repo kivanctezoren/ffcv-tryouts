@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --nodelist=dl3
+#SBATCH --nodelist
 #SBATCH --job-name=ffcv-train-inat18
 #SBATCH --workdir=/home/ktezoren/ffcv/inat-2018/
 #SBATCH --gres=gpu:4
