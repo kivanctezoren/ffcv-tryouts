@@ -366,6 +366,9 @@ def evaluate(model, loaders, lr_tta=False):
     with ch.no_grad():
         for name in ['train', 'test']:
             total_correct, total_num = 0., 0.
+
+            print(f"Evaluating {name}...")
+
             for ims, labs in tqdm(loaders[name]):
                 with autocast():
                     out = model(ims)
@@ -373,6 +376,7 @@ def evaluate(model, loaders, lr_tta=False):
                         out += model(ch.fliplr(ims))
                     total_correct += out.argmax(1).eq(labs).sum().cpu().item()
                     total_num += ims.shape[0]
+
             print(f'{name} accuracy: {total_correct / total_num * 100:.1f}%')
 
 if __name__ == "__main__":
