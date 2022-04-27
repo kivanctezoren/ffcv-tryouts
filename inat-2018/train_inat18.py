@@ -391,6 +391,6 @@ if __name__ == "__main__":
     loaders, start_time = make_dataloaders()
     model = construct_model()
     train(model, loaders)
-    print(f'Total time: {time.time() - start_time / 3600} minutes')
+    print(f'Total time: {(time.time() - start_time) / 3600} minutes')
     evaluate(model, loaders)
 
